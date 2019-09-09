@@ -1,0 +1,179 @@
+syntax = "proto3";
+import "google/protobuf/empty.proto";
+
+package api;
+
+option java_multiple_files = true;
+
+message ConnectRequest {
+  string Host = 1;
+  int32 Port = 2;
+  string Username = 3;
+  string Password = 4;
+  string DB = 5;
+  bool UseSSL = 6;
+}
+
+message Session {
+  string ID = 1;
+}
+
+enum Operation {
+  Insert = 0;
+  Merge = 1;
+  Update = 2;
+  Read = 3;
+}
+
+message InsertOption {
+  repeated string InsertColumns = 1;
+  bool TruncateTable = 2;
+  int64 ErrorLimitCount = 4;
+  int32 ErrorLimitPercentage = 5;
+}
+
+message UpdateOption {
+  repeated string MatchColumns = 1;
+  repeated string UpdateColumns = 2;
+  string Condition = 3;
+  int64 ErrorLimitCount = 4;
+  int32 ErrorLimitPercentage = 5;
+}
+
+message MergeOption {
+  repeated string InsertColumns = 1;
+  repeated string MatchColumns = 2;
+  repeated string UpdateColumns = 3;
+  string Condition = 4;
+  int64 ErrorLimitCount = 5;
+  int32 ErrorLimitPercentage = 6;
+}
+
+message OpenRequest {
+  Session Session = 1;
+  string SchemaName = 2;
+  string TableName = 3;
+  string PreSQL = 4;
+  string PostSQL = 5;
+  int32 Timeout = 6; //seconds
+  string Encoding = 7;
+  string StagingSchema = 8;
+
+  oneof Option {
+    InsertOption InsertOption = 100;
+    UpdateOption UpdateOption = 101;
+    MergeOption MergeOption = 102;
+  }
+}
+
+message RowData {
+  bytes Data = 1; // Data must be protobuf encoded Row, defined in data.proto
+}
+
+message WriteRequest {
+  Session Session = 1;
+  repeated RowData Rows = 2;
+}
+
+message TransferStats {
+  int64 SuccessCount = 1;
+  int64 ErrorCount = 2;
+  repeated string ErrorRows = 3;
+}
+
+message CloseRequest {
+  Session session = 1;
+  int32 MaxErrorRows = 2; // -1: return all, 0: nothing, positive: max rows.
+}
+
+message ListSchemaRequest {
+  Session Session = 1;
+}
+
+message Schema {
+  string Name = 1;
+  string Owner = 2;
+}
+
+message Schemas {
+  repeated Schema Schemas = 1;
+}
+
+message ListTableRequest {
+  Session Session = 1;
+  string Schema = 2;
+}
+
+message DescribeTableRequest {
+  Session Session = 1;
+  string SchemaName = 2;
+	string TableName = 3;
+}
+
+enum RelationType {
+  Table = 0;
+  View = 1;
+  Index = 2;
+  Sequence = 3;
+  Special = 4;
+  Other = 255;
+}
+
+message TableInfo {
+	string Name = 1;
+	RelationType Type = 2;
+}
+
+message Tables {
+	repeated TableInfo Tables = 1;
+}
+
+message Columns {
+	repeated ColumnInfo Columns = 1;
+}
+
+message ColumnInfo {
+	string Name = 1;
+	string DatabaseType = 2;
+
+  bool HasLength = 3;
+	int64 Length = 4;
+
+  bool HasPrecisionScale = 5;
+	int64 Precision = 6;
+	int64 Scale = 7;
+
+  bool HasNullable = 8;
+  bool Nullable = 9;
+}
+
+service Gpss {
+  // Connect establishes a connection to GreenplumDB cluster,
+  // and returns Session object.
+  rpc Connect(ConnectRequest) returns (Session) {}
+
+  // Disconnect frees all resources allocated for a session.
+  rpc Disconnect(Session) returns (google.protobuf.Empty) {}
+
+  // Open opens a table for read/write operation.
+  rpc Open(OpenRequest) returns(google.protobuf.Empty) {}
+
+  //rpc Read(ReadRequest) returns(stream ReadData) {}
+
+  // Write writes data to table
+  rpc Write(WriteRequest) returns(google.protobuf.Empty) {}
+
+  //rpc Flush(FlushRequest) returns(google.protobuf.Empty) {}
+
+  // Close closes read/write operation.
+  rpc Close(CloseRequest) returns(TransferStats) {}
+
+  // ListSchema lists all available schemas in a database
+  rpc ListSchema(ListSchemaRequest) returns (Schemas) {}
+
+  // ListTable lists all tables and views in a schema
+  rpc ListTable(ListTableRequest) returns (Tables) {}
+
+  // DescribeTable decribes table metadata(column name and column type)
+  rpc DescribeTable(DescribeTableRequest) returns (Columns) {}
+}
