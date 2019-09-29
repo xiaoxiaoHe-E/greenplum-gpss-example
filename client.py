@@ -25,9 +25,6 @@ csvPath = 'table32_100.txt'
 deleminator = '\t'
 
 
-csvPath = 'test.csv'
-csvHaveTitle = True
-
 def ConnectToGPSS():
     #connect to gpdb
     #return channel, mSession, stub
