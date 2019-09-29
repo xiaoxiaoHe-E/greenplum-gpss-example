@@ -112,48 +112,6 @@ def WritData(mSession, stub, schema):
     state = stub.Close(closeReq)
     print("write response from server: ", state)
 
-    #write into gpdb from a csv file
-
-    #start an insert service
-    insOpt = gpss_pb2.InsertOption(
-        InsertColumns=["a", "b"],  # colum list to be inserted
-        TruncateTable=False,  # truncate the table before inserting or not
-        ErrorLimitCount=5,            #
-        ErrorLimitPercentage=5
-    )
-    openReq = gpss_pb2.OpenRequest(Session=mSession,
-                                   SchemaName=schema,
-                                   TableName="test",
-                                   PreSQL="",
-                                   PostSQL="",
-                                   Timeout=10,       # seconds
-                                   Encoding="UTF_8",
-                                   StagingSchema="",
-                                   InsertOption=insOpt)
-    stub.Open(openReq)
-
-    #read data from csv file
-    data = pd.read_csv(csvPath)
-    myRowData = []
-    for index, item in data.iterrows():
-        if csvHaveTitle == True and index == 0:  # skip the first line if has title
-            continue
-        valA = data_pb2.DBValue(StringValue=item[0])
-        valB = data_pb2.DBValue(Int64Value=int(item[1]))
-        myRow = data_pb2.Row(Columns=[valA, valB])
-        #print("original data: ", myRow)
-        myRowinBytes = myRow.SerializeToString()
-        myRowData.append(gpss_pb2.RowData(Data=myRowinBytes))
-
-    writeReq = gpss_pb2.WriteRequest(Session=mSession, Rows=myRowData)
-    stub.Write(writeReq)
-
-    #close the write service
-    closeReq = gpss_pb2.CloseRequest(session=mSession,
-                                     MaxErrorRows=5)
-    state = stub.Close(closeReq)
-    print("write response from server: ", state)
-
 
 def writeFromCsv(mSession, stub, schema):
     columns = []
@@ -162,7 +120,7 @@ def writeFromCsv(mSession, stub, schema):
     insOpt = gpss_pb2.InsertOption(
         InsertColumns=columns,  # colum list to be inserted
         TruncateTable=False,  # truncate the table before inserting or not
-        ErrorLimitCount=10,            #
+        ErrorLimitCount=10,            
         ErrorLimitPercentage=10
     )
     openReq = gpss_pb2.OpenRequest(Session=mSession,
