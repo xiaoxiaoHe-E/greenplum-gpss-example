@@ -10,25 +10,30 @@ import pandas as pd
 from dateutil.parser import parse
 from datetime import datetime
 
-#generated-members = Timestamp.*
 
 mSession = gpss_pb2.Session()
 gpMasterHost = "127.0.0.1"
-gpMasterPort = 5000   # port of gpss which is different from the port of gpdb
+gpMasterPort = 5000       # port of gpss which is different from the port of gpdb
 gpRoleName = "gpadmin"
 gpPasswd = "changeme"
 dbname = "gpadmin"
 gpdbPort = 5432  # port of gpdb
+MyTableName = 'tablestr'  # insert table
 
 csvHaveTitle = False
 csvPath = 'table32_100.txt'
 deleminator = '\t'
 
+WriteEvery = 3000  # grpc has a max message length restrition (4M)
+
 
 def ConnectToGPSS():
     #connect to gpdb
     #return channel, mSession, stub
-    channel = grpc.insecure_channel(gpMasterHost + ':' + str(gpMasterPort))
+    options = [('grpc.max_receive_message_length', 100 * 1024 * 1024),
+               ('grpc.max_send_message_length', 100 * 1024 * 1024)]
+    channel = grpc.insecure_channel(
+        gpMasterHost + ':' + str(gpMasterPort),  options=options)
     stub = gpss_pb2_grpc.GpssStub(channel)
     mConnectReq = gpss_pb2.ConnectRequest(
         Host=gpMasterHost,
@@ -112,20 +117,18 @@ def WritData(mSession, stub, schema):
     state = stub.Close(closeReq)
     print("write response from server: ", state)
 
+    #write into gpdb from a csv file
 
-def writeFromCsv(mSession, stub, schema):
-    columns = []
-    for i in range(32):
-        columns.append("col"+str(i+1))
+    #start an insert service
     insOpt = gpss_pb2.InsertOption(
-        InsertColumns=columns,  # colum list to be inserted
+        InsertColumns=["a", "b"],  # colum list to be inserted
         TruncateTable=False,  # truncate the table before inserting or not
-        ErrorLimitCount=10,            
-        ErrorLimitPercentage=10
+        ErrorLimitCount=5,            #
+        ErrorLimitPercentage=5
     )
     openReq = gpss_pb2.OpenRequest(Session=mSession,
                                    SchemaName=schema,
-                                   TableName="table32",
+                                   TableName="test",
                                    PreSQL="",
                                    PostSQL="",
                                    Timeout=10,       # seconds
@@ -135,38 +138,126 @@ def writeFromCsv(mSession, stub, schema):
     stub.Open(openReq)
 
     #read data from csv file
-    start_time = datetime.now()
-    data = pd.read_csv(csvPath, sep=deleminator)
+    data = pd.read_csv(csvPath)
     myRowData = []
     for index, item in data.iterrows():
         if csvHaveTitle == True and index == 0:  # skip the first line if has title
             continue
-        colData = []
-        for i in range(18):
-            colData.append(data_pb2.DBValue(Float64Value=float(item[i])))
-        for i in range(18, 22):
-            d = parse(item[i])
-            d2 = Timestamp()
-            d2.FromDatetime(d)
-            colData.append(data_pb2.DBValue(TimeStampValue=d2))
-        for i in range(22, 32):
-            s = str(item[i])
-            colData.append(data_pb2.DBValue(StringValue=s.encode()))
-        myRow = data_pb2.Row(Columns=colData)
+        valA = data_pb2.DBValue(StringValue=item[0])
+        valB = data_pb2.DBValue(Int64Value=int(item[1]))
+        myRow = data_pb2.Row(Columns=[valA, valB])
         #print("original data: ", myRow)
         myRowinBytes = myRow.SerializeToString()
         myRowData.append(gpss_pb2.RowData(Data=myRowinBytes))
 
     writeReq = gpss_pb2.WriteRequest(Session=mSession, Rows=myRowData)
     stub.Write(writeReq)
-    print('time consumed in writing:', float(
-        (datetime.now() - start_time).seconds), 'seconds')
 
     #close the write service
     closeReq = gpss_pb2.CloseRequest(session=mSession,
                                      MaxErrorRows=5)
     state = stub.Close(closeReq)
     print("write response from server: ", state)
+
+
+def is_valid_date(strdate):
+    try:
+        parse(strdate)
+        return True
+    except:
+        return False
+
+
+def writeFromCsv(mSession, stub, schema):
+    avePre = 0  # average preparing time
+    aveWrite = 0  # average writing time
+    t = 0
+
+    columns = []
+    for i in range(32):
+        columns.append("col"+str(i+1))
+    insOpt = gpss_pb2.InsertOption(
+        InsertColumns=columns,  # colum list to be inserted
+        TruncateTable=False,  # truncate the table before inserting or not
+        ErrorLimitCount=10000,            #
+        ErrorLimitPercentage=80
+    )
+    openReq = gpss_pb2.OpenRequest(Session=mSession,
+                                   SchemaName=schema,
+                                   TableName=MyTableName,
+                                   PreSQL="",
+                                   PostSQL="",
+                                   Timeout=10,       # seconds
+                                   Encoding="UTF_8",
+                                   StagingSchema="",
+                                   InsertOption=insOpt)
+    stub.Open(openReq)
+
+    #read data from csv file
+    st = datetime.now()
+    data = pd.read_csv(csvPath, sep=deleminator)
+    print("time consumed in reading: ",
+          (datetime.now() - st).microseconds, "microseconds")
+    myRowData = []
+    st = datetime.now()
+    for index, item in data.iterrows():
+        if csvHaveTitle == True and index == 0:  # skip the first line if has title
+            continue
+        colData = []
+        for i in item:
+
+            '''
+            # take all data as string
+            s = str(i)
+            colData.append(data_pb2.DBValue( StringValue= s.encode() ))
+            '''
+
+            # data is composed of number / timestamp / string
+            # if i is a number,  pandas recoginze data type(number/string) automaticly
+            if type(i) == float or type(i) == int:
+                colData.append(data_pb2.DBValue(Float64Value=float(i)))
+            elif is_valid_date(i):  # else if i is a timestamp
+                d = parse(i)
+                d2 = Timestamp()
+                d2.FromDatetime(d)
+                colData.append(data_pb2.DBValue(TimeStampValue=d2))
+            else:  # else take i as a string
+                s = str(i)
+                colData.append(data_pb2.DBValue(StringValue=s.encode()))
+
+        myRow = data_pb2.Row(Columns=colData)
+        myRowinBytes = myRow.SerializeToString()
+        myRowData.append(gpss_pb2.RowData(Data=myRowinBytes))
+
+        if index % WriteEvery == 0:  # grpc max message length 4M
+            print("\ntime consumed in preparing data:",
+                  (datetime.now() - st).microseconds, 'microseconds')
+            avePre += (datetime.now() - st).microseconds
+            start_time = datetime.now()  # time on
+            writeReq = gpss_pb2.WriteRequest(Session=mSession, Rows=myRowData)
+            stub.Write(writeReq)
+            print('time consumed in writing ', WriteEvery, ' lines:',
+                  (datetime.now() - start_time).microseconds, 'microseconds')
+            aveWrite += (datetime.now() - start_time).microseconds
+            t += 1
+            myRowData = []
+            st = datetime.now()
+
+    if myRowData:
+        start_time = datetime.now()  # time on
+        writeReq = gpss_pb2.WriteRequest(Session=mSession, Rows=myRowData)
+        stub.Write(writeReq)
+        print('time consumed in writing residual lines:', float(
+            (datetime.now() - start_time).microseconds), 'microseconds')
+
+    #close the write service
+    closeReq = gpss_pb2.CloseRequest(session=mSession,
+                                     MaxErrorRows=5)
+    state = stub.Close(closeReq)
+    print("\nwrite response from server: ", state)
+
+    print("average prearing time:", avePre/t, "microseconds")
+    print("average writing time:", aveWrite/t, "microseconds")
 
 
 if __name__ == '__main__':
