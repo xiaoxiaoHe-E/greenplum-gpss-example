@@ -18,7 +18,7 @@ gpRoleName = "gpadmin"
 gpPasswd = "changeme"
 dbname = "gpadmin"
 gpdbPort = 5432  # port of gpdb
-MyTableName = 'tablestr'  # insert table
+MyTableName = 'table32'  # insert table
 
 csvHaveTitle = False
 csvPath = 'table32_100.txt'
@@ -72,92 +72,6 @@ def ListTable(mSession, stub, mSchema):
     tableInfo = gpss_pb2.Tables()
     tableInfo = stub.ListTable(mListTableReq)
     print(tableInfo)
-
-
-def WritData(mSession, stub, schema):
-    #insert data to the given schema
-    #return none
-
-    #start an insert service
-    insOpt = gpss_pb2.InsertOption(
-        InsertColumns=["a", "b"],  # colum list to be inserted
-        TruncateTable=False,  # truncate the table before inserting or not
-        ErrorLimitCount=5,            #
-        ErrorLimitPercentage=5
-    )
-    openReq = gpss_pb2.OpenRequest(Session=mSession,
-                                   SchemaName=schema,
-                                   TableName="test",
-                                   PreSQL="",
-                                   PostSQL="",
-                                   Timeout=10,       # seconds
-                                   Encoding="UTF_8",
-                                   StagingSchema="",
-                                   InsertOption=insOpt)
-    stub.Open(openReq)
-
-    #perpare dummy data to write
-    #table test (a text, b integer)
-    #need to specify all the columns in the table
-    myRowData = []
-    for i in range(5):
-        valA = data_pb2.DBValue(StringValue=str('aa'+str(i)))
-        valB = data_pb2.DBValue(Int64Value=i)
-        myRow = data_pb2.Row(Columns=[valA, valB])
-        #print("original data: ", myRow)
-        myRowinBytes = myRow.SerializeToString()
-        myRowData.append(gpss_pb2.RowData(Data=myRowinBytes))
-
-    writeReq = gpss_pb2.WriteRequest(Session=mSession, Rows=myRowData)
-    stub.Write(writeReq)
-
-    #close the write service
-    closeReq = gpss_pb2.CloseRequest(session=mSession,
-                                     MaxErrorRows=5)
-    state = stub.Close(closeReq)
-    print("write response from server: ", state)
-
-    #write into gpdb from a csv file
-
-    #start an insert service
-    insOpt = gpss_pb2.InsertOption(
-        InsertColumns=["a", "b"],  # colum list to be inserted
-        TruncateTable=False,  # truncate the table before inserting or not
-        ErrorLimitCount=5,            #
-        ErrorLimitPercentage=5
-    )
-    openReq = gpss_pb2.OpenRequest(Session=mSession,
-                                   SchemaName=schema,
-                                   TableName="test",
-                                   PreSQL="",
-                                   PostSQL="",
-                                   Timeout=10,       # seconds
-                                   Encoding="UTF_8",
-                                   StagingSchema="",
-                                   InsertOption=insOpt)
-    stub.Open(openReq)
-
-    #read data from csv file
-    data = pd.read_csv(csvPath)
-    myRowData = []
-    for index, item in data.iterrows():
-        if csvHaveTitle == True and index == 0:  # skip the first line if has title
-            continue
-        valA = data_pb2.DBValue(StringValue=item[0])
-        valB = data_pb2.DBValue(Int64Value=int(item[1]))
-        myRow = data_pb2.Row(Columns=[valA, valB])
-        #print("original data: ", myRow)
-        myRowinBytes = myRow.SerializeToString()
-        myRowData.append(gpss_pb2.RowData(Data=myRowinBytes))
-
-    writeReq = gpss_pb2.WriteRequest(Session=mSession, Rows=myRowData)
-    stub.Write(writeReq)
-
-    #close the write service
-    closeReq = gpss_pb2.CloseRequest(session=mSession,
-                                     MaxErrorRows=5)
-    state = stub.Close(closeReq)
-    print("write response from server: ", state)
 
 
 def is_valid_date(strdate):
@@ -243,7 +157,7 @@ def writeFromCsv(mSession, stub, schema):
             myRowData = []
             st = datetime.now()
 
-    if myRowData:
+    if myRowData:  # write residual lines
         start_time = datetime.now()  # time on
         writeReq = gpss_pb2.WriteRequest(Session=mSession, Rows=myRowData)
         stub.Write(writeReq)
